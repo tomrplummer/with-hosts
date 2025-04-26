@@ -46,7 +46,7 @@ func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byt
 }
 
 func getMatchingDomains(tag string) ([]string, error) {
-	contents, err := os.ReadFile("./hosts")
+	contents, err := os.ReadFile("/etc/caddy/hosts")
 	if err != nil {
 		return nil, fmt.Errorf("failed to read hosts: %v", err)
 	}
