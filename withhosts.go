@@ -6,39 +6,40 @@ import (
 	"slices"
 	"strings"
 
-	// "github.com/caddyserver/caddy/caddyhttp"
-
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 )
-
-type EtcHosts struct {
-	Entries []Entry
-}
-
-type Entry struct {
-	Ip     string
-	Domain string
-}
 
 type FromHostsAdapter struct{}
 
 func init() {
 	caddyconfig.RegisterAdapter("caddyfile_withhosts", FromHostsAdapter{})
 }
+
 func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byte, []caddyconfig.Warning, error) {
 	localwarnings := []caddyconfig.Warning{}
+
+	vars := map[string]string{}
+
 	lines := strings.Split(string(raw), "\n")
 	var transformed []string
+
 	for _, line := range lines {
-		if strings.HasPrefix(line, "from_hosts") {
+		if strings.HasPrefix(line, "@") {
 			fields := strings.Fields(line)
 			if len(fields) >= 2 {
-				domains, err := getMatchingDomains(fields[1])
+				vars[strings.Trim(fields[0], "@")] = fields[1]
+			}
+		} else if strings.HasPrefix(line, "from_hosts") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				hostsPath := vars["hosts_filepath"]
+				domains, err := getMatchingDomains(hostsPath, fields[1])
 				if err != nil {
 					return nil, nil, fmt.Errorf("matching error: %v", err)
 				}
 
-				localHosts, _ := getEtcHostsEntries()
+				etcPath := vars["etc_hosts_filepath"]
+				localHosts, _ := getEtcHostsEntries(etcPath)
 
 				for _, domain := range domains {
 					if !slices.Contains[[]string](localHosts, domain) {
@@ -67,8 +68,9 @@ func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byt
 	return adapted, warnings, nil
 }
 
-func getMatchingDomains(tag string) ([]string, error) {
-	contents, err := os.ReadFile("/etc/caddy/hosts")
+func getMatchingDomains(path, tag string) ([]string, error) {
+	// contents, err := os.ReadFile("/etc/caddy/hosts")
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read hosts: %v", err)
 	}
@@ -91,9 +93,10 @@ func getMatchingDomains(tag string) ([]string, error) {
 	return matches, nil
 }
 
-func getEtcHostsEntries() ([]string, error) {
+func getEtcHostsEntries(path string) ([]string, error) {
 	etcHosts := []string{}
-	contents, err := os.ReadFile("/hostmachine/hosts")
+	// contents, err := os.ReadFile("/hostmachine/hosts")
+	contents, err := os.ReadFile(path)
 	if err != nil {
 		return etcHosts, err
 	}
