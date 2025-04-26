@@ -1,4 +1,4 @@
-module github.com/tomrplummer/from-hosts
+module github.com/tomrplummer/with-hosts
 
 go 1.23.8
 
