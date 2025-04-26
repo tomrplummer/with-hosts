@@ -3,6 +3,7 @@ package withhosts
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	// "github.com/caddyserver/caddy/caddyhttp"
@@ -10,12 +11,22 @@ import (
 	"github.com/caddyserver/caddy/v2/caddyconfig"
 )
 
+type EtcHosts struct {
+	Entries []Entry
+}
+
+type Entry struct {
+	Ip     string
+	Domain string
+}
+
 type FromHostsAdapter struct{}
 
 func init() {
 	caddyconfig.RegisterAdapter("caddyfile_withhosts", FromHostsAdapter{})
 }
 func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byte, []caddyconfig.Warning, error) {
+	localwarnings := []caddyconfig.Warning{}
 	lines := strings.Split(string(raw), "\n")
 	var transformed []string
 	for _, line := range lines {
@@ -27,6 +38,16 @@ func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byt
 					return nil, nil, fmt.Errorf("matching error: %v", err)
 				}
 
+				localHosts, _ := getEtcHostsEntries()
+
+				for _, domain := range domains {
+					if !slices.Contains[[]string](localHosts, domain) {
+						localwarnings = append(localwarnings, caddyconfig.Warning{
+							Message: "/etc/hosts is missing " + domain,
+						})
+					}
+				}
+
 				newLine := strings.Join(append(domains, fields[2:]...), " ")
 				transformed = append(transformed, newLine)
 			}
@@ -35,9 +56,10 @@ func (FromHostsAdapter) Adapt(raw []byte, options map[string]interface{}) ([]byt
 		}
 	}
 
-	fmt.Println(strings.Join(transformed, "\n"))
-
 	adapted, warnings, err := caddyconfig.GetAdapter("caddyfile").Adapt([]byte(strings.Join(transformed, "\n")), options)
+
+	warnings = append(warnings, localwarnings...)
+
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to adapt expanded Caddyfile: %v", err)
 	}
@@ -67,4 +89,25 @@ func getMatchingDomains(tag string) ([]string, error) {
 	}
 
 	return matches, nil
+}
+
+func getEtcHostsEntries() ([]string, error) {
+	etcHosts := []string{}
+	contents, err := os.ReadFile("/hostmachine/hosts")
+	if err != nil {
+		return etcHosts, err
+	}
+
+	lines := strings.Split(string(contents), "\n")
+
+	for _, line := range lines {
+		if len(line) > 0 && !strings.HasPrefix(line, "#") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				etcHosts = append(etcHosts, fields[1])
+			}
+		}
+	}
+
+	return etcHosts, nil
 }
